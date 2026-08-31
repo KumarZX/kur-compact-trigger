@@ -3,7 +3,7 @@
   "version": "1.2.0",
   "type": "module",
   "main": "lib/index.js",
-  "description": "DSH plugin: session-level auto compaction trigger for DeepSeek Harness.",
+  "description": "DSH plugin: per-session compaction (official auto is global-only). Compact cheap chats without keeping Settings open.",
   "license": "MIT",
   "keywords": [
     "dsh-plugin",

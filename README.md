@@ -6,55 +6,67 @@
 
 **Category / 分类：** `dsh-plugin` · DeepSeek Harness 第三方插件
 
-Session-level auto compaction trigger for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Before each turn, it measures context tokens and calls the official `compaction` service when the threshold is reached.
+**Per-session compaction** for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Official auto-compact is global only. This plugin lets each chat pick its own threshold from the header — without keeping the settings window open.
 
-会话级自动压缩触发器。每轮对话开始前用 `tokenMeter` 计量上下文；超过阈值时调用官方 `compaction` 服务压缩旧消息。
+**会话级压缩**：官方自动压缩只能调全局。本插件在标题栏给**每个会话**单独设阈值，不必一直开着设置窗。
 
 ---
 
 ## English
 
-### What it does
+### Why this exists
 
-This plugin does **not** invent its own summarizer. It only decides *when* and *which range* to compact, then calls `compaction.compactRegion()` from `@deepseek-ai/dsh-compaction-basic`.
+Official `@deepseek-ai/dsh-compaction-basic` `auto` is a **single global policy** (typically 80% of the model window). Every session shares it.
+
+That is awkward once token prices go up (DeepSeek and others): a long research thread may need a large window, while a short task chat should compact early. Opening Settings for every switch is not how people actually work.
+
+This plugin adds **session-level control**: a compact button on the chat header, optional overrides in `sessions.<id>`, and a global default only as fallback.
+
+It does **not** replace the official summarizer. It decides *when* and *which range* to compact, then calls `compaction.compactRegion()`.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `thresholdTokens` | `200000` | Compact when session tokens reach this value |
+| `thresholdTokens` | `200000` | Compact when **this session** reaches this many tokens |
 | `retainTokens` | `32000` | Keep roughly this many recent tokens verbatim |
 | `maxAttempts` | `3` | Max compact loops in one turn |
-| `sessions.<id>` | — | Optional per-session overrides |
+| `sessions.<id>` | — | Per-session override; empty = follow global |
 
 The compact cut is moved to a **tool-call / tool-result pairing boundary** so a tool result is not split from its call.
 
-It lives on the **host plane** so every agent preset shares it. It does **not** inject `compaction` (that service lives in the preset realm; injecting it on host would stall the plugin tree). At `agent/pre-step` it resolves the current preset via `ctx.agentPresets.serviceFor(agent, 'compaction')`.
+Host plane, shared by every preset. Do **not** inject `compaction` (that service lives in the preset realm). At `agent/pre-step` it uses `ctx.agentPresets.serviceFor(agent, 'compaction')`.
 
 ### Screenshots
 
-Header button — open per-session threshold without leaving the chat:
+Header — change **this session** without leaving the chat:
 
 ![Header compact button](docs/screenshot-header.png)
 
-Session override — leave fields blank to follow global settings:
+Session override — leave fields blank to follow the global default:
 
 ![Session compact threshold](docs/screenshot-session.png)
 
-Settings → **Auto Compact** — global defaults; slider max follows the model context window:
+Settings → **Auto Compact** — global fallback only; slider max follows the model context window:
 
 ![Global auto-compact settings](docs/screenshot-settings.png)
 
 ### Install
 
-1. Copy this package to `~/.dsh/profiles/node_modules/kur-compact-trigger/` (or `npm pack` / clone into that path).
+1. Copy this package to `~/.dsh/profiles/node_modules/kur-compact-trigger/` (or clone / `npm pack` into that path).
 2. Merge [examples/cordis.patch.yml](examples/cordis.patch.yml) into each profile’s `cordis.patch.yml` (`desktop`, `web`, `feishu`, …).
-3. Add [examples/settings.yaml](examples/settings.yaml) under `kur-compact-trigger:` in `~/.dsh/settings.yaml` (and profile-specific settings if needed).
+3. Add [examples/settings.yaml](examples/settings.yaml) under `kur-compact-trigger:` in `~/.dsh/settings.yaml`.
 4. Restart DSH Desktop / the profile process.
 
-You can also change values in **Settings → Auto Compact**, or from the chat header **Compact** control.
+Tune the global default in **Settings → Auto Compact**. Tune one chat from the header **Compact** control.
 
-### Note on official auto-compact
+### Official auto vs this plugin
 
-`@deepseek-ai/dsh-compaction-basic` defaults to `auto: true` at **80% of the model context window**. That path can fire independently of this plugin. If your chat model’s window is 128k, 80% ≈ 102k — often *before* this plugin’s 200k threshold. Tune one side or disable official `auto` if you want a single policy.
+| | Official `compaction-basic` auto | This plugin |
+|---|---|---|
+| Scope | **Global** (one ratio for all sessions) | **Per session**, plus a global default |
+| Typical trigger | 80% of the model context window | Absolute token threshold (default 200k) |
+| UI | Settings only | Header + Settings |
+
+Both can run. If you want only session-level policy, turn official `auto` off and use this plugin.
 
 ### License
 
@@ -64,24 +76,28 @@ MIT
 
 ## 中文
 
-### 做什么
+### 为什么做这个
 
-本插件**不实现摘要模型**，只决定**何时、压哪一段**，然后调用官方 `@deepseek-ai/dsh-compaction-basic` 的 `compaction.compactRegion()`。
+官方 `@deepseek-ai/dsh-compaction-basic` 的 `auto` **只能控制全局**（通常是模型窗口的 80%）。所有会话共用同一套。
+
+模型（尤其 DeepSeek）涨价之后，长上下文很贵：有的会话需要大窗口慢慢做，有的短任务根本不该带着几十万 token 往下跑。每次去设置页改全局、改完再改回来，也不方便——设置窗不能一直开着。
+
+所以才有**会话级压缩**：标题栏给当前对话单独设阈值；`sessions.<id>` 可覆盖；全局默认只当没覆盖时的兜底。
+
+本插件**不实现摘要模型**，只决定**何时、压哪一段**，再调用官方 `compaction.compactRegion()`。
 
 | 配置 | 默认 | 含义 |
 |---|---|---|
-| `thresholdTokens` | `200000` | 会话总 token 达到此值时压缩 |
+| `thresholdTokens` | `200000` | **本会话**总 token 达到此值时压缩 |
 | `retainTokens` | `32000` | 尽量保留尾部最近约这么多原文 token |
 | `maxAttempts` | `3` | 同一轮最多连压几次 |
-| `sessions.<id>` | — | 可选，按会话覆盖 |
+| `sessions.<id>` | — | 按会话覆盖；留空跟随全局 |
 
-切分点会挪到**工具调用 / 工具结果配对平衡**处，避免把一次 tool 拆开。
-
-插件挂在 **host 平面**，所有 preset 共用。**不要 inject `compaction`**（该服务在 preset realm；host 上 inject 会一直 pending）。在 `agent/pre-step` 里用 `ctx.agentPresets.serviceFor(agent, 'compaction')` 取当前 preset 实例。
+切分点会挪到**工具调用 / 工具结果配对平衡**处。挂在 **host 平面**；**不要 inject `compaction`**。在 `agent/pre-step` 里用 `ctx.agentPresets.serviceFor(agent, 'compaction')` 取当前 preset。
 
 ### 截图
 
-会话标题栏入口，不离开对话即可改本会话阈值：
+标题栏入口：不离开对话、也不用开设置窗，改**这一路**的阈值：
 
 ![标题栏压缩阈值](docs/screenshot-header.png)
 
@@ -89,22 +105,28 @@ MIT
 
 ![本会话压缩阈值](docs/screenshot-session.png)
 
-设置 → **自动压缩**：全局默认；滑条上限跟随模型上下文窗口：
+设置 → **自动压缩**：只是全局兜底；滑条上限跟随模型窗口：
 
 ![全局自动压缩设置](docs/screenshot-settings.png)
 
 ### 安装
 
-1. 把本包放到 `~/.dsh/profiles/node_modules/kur-compact-trigger/`（或 clone / `npm pack` 到该路径）。
-2. 将 [examples/cordis.patch.yml](examples/cordis.patch.yml) 合并进各 profile 的 `cordis.patch.yml`（`desktop` / `web` / `feishu` 等）。
-3. 在 `~/.dsh/settings.yaml` 写入 [examples/settings.yaml](examples/settings.yaml) 的 `kur-compact-trigger:` 段（profile 独立 settings 同样需要时再写一份）。
+1. 把本包放到 `~/.dsh/profiles/node_modules/kur-compact-trigger/`（或 clone / `npm pack`）。
+2. 将 [examples/cordis.patch.yml](examples/cordis.patch.yml) 合并进各 profile 的 `cordis.patch.yml`。
+3. 在 `~/.dsh/settings.yaml` 写入 [examples/settings.yaml](examples/settings.yaml) 的 `kur-compact-trigger:` 段。
 4. 重启 DSH Desktop 或对应 profile。
 
-也可在 **设置 → 自动压缩**，或会话标题栏 **压缩阈值** 里改。
+全局默认在 **设置 → 自动压缩**；单个会话用标题栏 **压缩阈值**。
 
-### 与官方自动压缩的关系
+### 官方自动压缩 vs 本插件
 
-官方 `@deepseek-ai/dsh-compaction-basic` 默认 `auto: true`，阈值是**模型窗口的 80%**。它和本插件是两条线。若聊天模型窗口是 128k，80% ≈ 102k，往往会**早于**本插件的 20 万阈值先动手。若只想保留一套策略，请调其中一侧，或关掉官方 `auto`。
+| | 官方 `compaction-basic` auto | 本插件 |
+|---|---|---|
+| 范围 | **只能全局**（所有会话同一比例） | **会话级** + 全局兜底 |
+| 典型触发 | 模型窗口的 80% | 绝对 token 阈值（默认 20 万） |
+| 界面 | 只有设置页 | 标题栏 + 设置页 |
+
+两条线可以同时开。若只想按会话控成本，关掉官方 `auto`，只用本插件。
 
 ### 许可证
 
