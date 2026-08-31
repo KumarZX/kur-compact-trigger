@@ -1,0 +1,6 @@
+# 写入 ~/.dsh/settings.yaml（或各 profile 自己的 settings.yaml）
+kur-compact-trigger:
+  thresholdTokens: 200000
+  retainTokens: 32000
+  maxAttempts: 3
+  sessions: {}

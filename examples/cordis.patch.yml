@@ -1,0 +1,11 @@
+# DSH profile patch：把本插件挂到 host 平面。
+# 放到 ~/.dsh/profiles/<profile>/cordis.patch.yml（与已有条目合并）。
+#
+# compaction 在 preset realm 内，不要 inject compaction，
+# 否则 host 平面会一直 pending。插件在 agent/pre-step 里用
+# ctx.agentPresets.serviceFor(agent, 'compaction') 解析当前 preset 实例。
+
+- insert:
+    - id: kur-compact-trigger
+      name: kur-compact-trigger
+      inject: ['tokenMeter', 'settings', 'agentPresets']
